@@ -1,0 +1,64 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate skill structure
+        run: |
+          echo "=== Smoke Tests ==="
+          echo "Repo checkout: OK"
+
+          # Check no secrets leaked
+          echo "Checking for leaked secrets..."
+          if grep -rn 'ghp_\|ghs_\|sk-[a-zA-Z0-9]\{20,\}\|xox[bpsa]-' . \
+            --include='*.md' --include='*.yaml' --include='*.yml' \
+            --include='*.json' --include='*.txt' --include='*.py' \
+            --include='*.sh' 2>/dev/null | grep -v '.git/'; then
+            echo "FAIL: Possible secrets found"
+            exit 1
+          fi
+          echo "No obvious secrets: OK"
+
+          # Check all SKILL.md files have required frontmatter
+          echo "Checking SKILL.md frontmatter..."
+          FAIL=0
+          for f in $(find . -name 'SKILL.md' -not -path './.git/*'); do
+            if ! head -20 "$f" | grep -q '^name:'; then
+              echo "MISSING name: $f"
+              FAIL=1
+            fi
+            if ! head -20 "$f" | grep -q '^description:'; then
+              echo "MISSING description: $f"
+              FAIL=1
+            fi
+          done
+          if [ $FAIL -eq 1 ]; then exit 1; fi
+          echo "Frontmatter: OK"
+
+          # Check referenced files exist
+          echo "Checking referenced files..."
+          FAIL=0
+          for f in $(find . -name 'SKILL.md' -not -path './.git/*'); do
+            DIR=$(dirname "$f")
+            # Check references/, templates/, scripts/ subdirs mentioned in SKILL.md
+            for subdir in references templates scripts assets; do
+              if grep -q "$subdir/" "$f" 2>/dev/null; then
+                if [ ! -d "$DIR/$subdir" ]; then
+                  echo "REFERENCED DIR MISSING: $f mentions $subdir/ but $DIR/$subdir does not exist"
+                  # warning only, not fatal
+                fi
+              fi
+            done
+          done
+          echo "References: OK (warnings above are non-fatal)"
+
+          echo "=== All smoke tests passed ==="
