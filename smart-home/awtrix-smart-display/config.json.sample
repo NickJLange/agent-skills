@@ -1,0 +1,8 @@
+{
+  "devices": {
+    "alias1": "logical_name_or_fqdn_1",
+    "alias2": "logical_name_or_fqdn_2"
+  },
+  "sprites_dir": "/path/to/external-sprites-directory",
+  "default_text_color": "#00BCFF"
+}
