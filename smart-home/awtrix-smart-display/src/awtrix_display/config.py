@@ -1,5 +1,8 @@
 import os
 import json
+import logging
+
+logger = logging.getLogger("awtrix_display.config")
 
 def load_config():
     """
@@ -30,8 +33,8 @@ def load_config():
                         config["sprites_dir"] = file_config["sprites_dir"]
                     if "default_text_color" in file_config:
                         config["default_text_color"] = file_config["default_text_color"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to load config from %s: %s", config_path, e, exc_info=True)
 
     # 2. Environment variables override
     # AWTRIX_DEVICES can be "kitchen=awtrix-kitchen.local,office=awtrix-office.local"
@@ -39,11 +42,14 @@ def load_config():
     if env_devices:
         parts = env_devices.split(",")
         for part in parts:
-            if "=" in part:
-                alias, endpoint = part.split("=", 1)
+            part_stripped = part.strip()
+            if not part_stripped:
+                continue
+            if "=" in part_stripped:
+                alias, endpoint = part_stripped.split("=", 1)
                 config["devices"][alias.strip()] = endpoint.strip()
             else:
-                config["devices"][part.strip()] = part.strip()
+                config["devices"][part_stripped] = part_stripped
 
     env_sprites_dir = os.environ.get("AWTRIX_SPRITES_DIR")
     if env_sprites_dir:

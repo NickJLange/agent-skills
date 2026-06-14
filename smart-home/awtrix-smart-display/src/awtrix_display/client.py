@@ -88,11 +88,17 @@ def resolve_sprite_path(source, sprites_dir):
                 catalog = json.load(f)
                 search_name = source.lower().replace(" ", "_").replace("(", "").replace(")", "")
                 for char in catalog:
-                    char_name = char["name"].lower().replace(" ", "_").replace("(", "").replace(")", "")
+                    if not isinstance(char, dict):
+                        continue
+                    name = char.get("name")
+                    path = char.get("path")
+                    if not name or not path:
+                        continue
+                    char_name = name.lower().replace(" ", "_").replace("(", "").replace(")", "")
                     if (char_name == search_name or 
-                        char["path"].lower().endswith(f"/{search_name}.gif") or 
-                        char["path"].lower() == f"sprites/{search_name}.gif"):
-                        full_path = os.path.join(sprites_dir, char["path"])
+                        path.lower().endswith(f"/{search_name}.gif") or 
+                        path.lower() == f"sprites/{search_name}.gif"):
+                        full_path = os.path.join(sprites_dir, path)
                         if os.path.exists(full_path):
                             return full_path
         except Exception:

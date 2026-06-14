@@ -47,6 +47,11 @@ Integration and control CLI for Awtrix 3 smart display clocks. Exposes a unified
    ```bash
    pip install -e /path/to/agent-skills/smart-home/awtrix-smart-display
    ```
+   
+3. If using the background character walk cycle animator streamer, configure the path to the `awtrix_animate.py` script by setting the `AWTRIX_ANIMATE_SCRIPT` environment variable:
+   ```bash
+   export AWTRIX_ANIMATE_SCRIPT="/path/to/mkulanzi/client/awtrix_animate.py"
+   ```
 
 ## Agent invocation examples
 

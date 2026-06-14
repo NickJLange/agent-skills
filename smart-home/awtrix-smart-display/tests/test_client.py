@@ -9,6 +9,9 @@ def test_resolve_sprite_path():
     with tempfile.TemporaryDirectory() as temp_dir:
         sprites_json = [
             {"name": "Cecil (Paladin)", "game": "FFIV", "path": "sprites/cecil.gif"},
+            {"game": "Missing Name", "path": "sprites/missing_name.gif"},
+            {"name": "Missing Path", "game": "FFVI"},
+            "not a dictionary",
             {"name": "Terra", "game": "FFVI", "path": "sprites/terra.gif"}
         ]
         with open(os.path.join(temp_dir, "sprites.json"), "w") as f:
@@ -24,6 +27,8 @@ def test_resolve_sprite_path():
         assert resolve_sprite_path("cecil", temp_dir) == cecil_path
         assert resolve_sprite_path("cecil_paladin", temp_dir) == cecil_path
         assert resolve_sprite_path("Terra", temp_dir) == terra_path
+        assert resolve_sprite_path("Missing Name", temp_dir) is None
+        assert resolve_sprite_path("Missing Path", temp_dir) is None
         assert resolve_sprite_path("nonexistent", temp_dir) is None
 
 def test_process_gif_for_awtrix():
