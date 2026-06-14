@@ -4,9 +4,9 @@ import json
 from awtrix_display.config import load_config, resolve_device
 
 def test_load_config_defaults():
-    old_path = os.environ.get("AWTRIX_CONFIG_PATH")
-    old_devices = os.environ.get("AWTRIX_DEVICES")
-    old_sprites = os.environ.get("AWTRIX_SPRITES_DIR")
+    orig_path = os.environ.get("AWTRIX_CONFIG_PATH")
+    orig_devices = os.environ.get("AWTRIX_DEVICES")
+    orig_sprites = os.environ.get("AWTRIX_SPRITES_DIR")
     
     if "AWTRIX_CONFIG_PATH" in os.environ: del os.environ["AWTRIX_CONFIG_PATH"]
     if "AWTRIX_DEVICES" in os.environ: del os.environ["AWTRIX_DEVICES"]
@@ -18,11 +18,26 @@ def test_load_config_defaults():
         assert "devices" in config
         assert "default_text_color" in config
     finally:
-        if old_path: os.environ["AWTRIX_CONFIG_PATH"] = old_path
-        if old_devices: os.environ["AWTRIX_DEVICES"] = old_devices
-        if old_sprites: os.environ["AWTRIX_SPRITES_DIR"] = old_sprites
+        if orig_path is not None:
+            os.environ["AWTRIX_CONFIG_PATH"] = orig_path
+        elif "AWTRIX_CONFIG_PATH" in os.environ:
+            del os.environ["AWTRIX_CONFIG_PATH"]
+            
+        if orig_devices is not None:
+            os.environ["AWTRIX_DEVICES"] = orig_devices
+        elif "AWTRIX_DEVICES" in os.environ:
+            del os.environ["AWTRIX_DEVICES"]
+            
+        if orig_sprites is not None:
+            os.environ["AWTRIX_SPRITES_DIR"] = orig_sprites
+        elif "AWTRIX_SPRITES_DIR" in os.environ:
+            del os.environ["AWTRIX_SPRITES_DIR"]
 
 def test_load_config_from_file_and_env():
+    orig_path = os.environ.get("AWTRIX_CONFIG_PATH")
+    orig_devices = os.environ.get("AWTRIX_DEVICES")
+    orig_sprites = os.environ.get("AWTRIX_SPRITES_DIR")
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump({
             "devices": {"testdev": "testval.local"},
@@ -50,6 +65,18 @@ def test_load_config_from_file_and_env():
             os.remove(temp_name)
         except Exception:
             pass
-        if "AWTRIX_CONFIG_PATH" in os.environ: del os.environ["AWTRIX_CONFIG_PATH"]
-        if "AWTRIX_DEVICES" in os.environ: del os.environ["AWTRIX_DEVICES"]
-        if "AWTRIX_SPRITES_DIR" in os.environ: del os.environ["AWTRIX_SPRITES_DIR"]
+        
+        if orig_path is not None:
+            os.environ["AWTRIX_CONFIG_PATH"] = orig_path
+        elif "AWTRIX_CONFIG_PATH" in os.environ:
+            del os.environ["AWTRIX_CONFIG_PATH"]
+            
+        if orig_devices is not None:
+            os.environ["AWTRIX_DEVICES"] = orig_devices
+        elif "AWTRIX_DEVICES" in os.environ:
+            del os.environ["AWTRIX_DEVICES"]
+            
+        if orig_sprites is not None:
+            os.environ["AWTRIX_SPRITES_DIR"] = orig_sprites
+        elif "AWTRIX_SPRITES_DIR" in os.environ:
+            del os.environ["AWTRIX_SPRITES_DIR"]

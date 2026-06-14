@@ -63,10 +63,13 @@ def handle_stream(args, config):
         # Delete edge_scene app on devices
         client = AwtrixClient()
         devices = args.devices or ",".join(config["devices"].values())
-        for dev_name in devices.split(","):
-            resolved = resolve_device(dev_name.strip(), config)
-            if resolved:
-                client.delete_app(resolved, "edge_scene")
+        if devices:
+            for dev_name in devices.split(","):
+                dev_name_stripped = dev_name.strip()
+                if dev_name_stripped:
+                    resolved = resolve_device(dev_name_stripped, config)
+                    if resolved:
+                        client.delete_app(resolved, "edge_scene")
         print("Streamer stopped and screens cleared.")
         return 0
 
@@ -86,7 +89,7 @@ def handle_stream(args, config):
         if not script_path:
             lookup_paths = [
                 os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../../mkulanzi/client/awtrix_animate.py")),
-                "/Users/njl/dev/src/mkulanzi/client/awtrix_animate.py"
+                os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../mkulanzi/client/awtrix_animate.py")),
             ]
             for p in lookup_paths:
                 if os.path.exists(p):
@@ -120,6 +123,14 @@ def handle_stream(args, config):
         try:
             with open(log_path, "a") as log_file:
                 p = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+            
+            # Post-start health check
+            time.sleep(0.5)
+            if p.poll() is not None:
+                print(f"Error: Streamer failed to start or crashed immediately (Exit Code: {p.returncode}).")
+                print(f"Check logs for details: {log_path}")
+                return 1
+
             with open(pid_path, "w") as f:
                 f.write(str(p.pid))
             print(f"Streamer successfully launched (PID: {p.pid}).")
@@ -157,7 +168,11 @@ def handle_notify(args, config):
         print(f"Error processing sprite: {e}")
         return 1
 
-    fw = len(scaled_frames[0]) if scaled_frames else 8
+    if not scaled_frames:
+        print("Error: No frames extracted from the sprite animation.")
+        return 1
+
+    fw = len(scaled_frames[0])
     if scaled_frames and scaled_frames[0]:
         max_x = max(p[0] for p in scaled_frames[0])
         fw = max_x + 1

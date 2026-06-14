@@ -1,6 +1,7 @@
 import os
 import json
 import urllib.request
+import urllib.parse
 import io
 from PIL import Image, ImageSequence
 
@@ -15,7 +16,7 @@ class AwtrixClient:
         else:
             url = target
 
-        endpoint = f"{url}/api/custom?name={app_name}"
+        endpoint = f"{url}/api/custom?name={urllib.parse.quote(app_name, safe='')}"
         data_bytes = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             endpoint,
@@ -48,8 +49,13 @@ class AwtrixClient:
         else:
             url = target
 
+        if isinstance(state, str):
+            is_on = state.lower() not in ("off", "false", "0")
+        else:
+            is_on = bool(state)
+
         endpoint = f"{url}/api/power"
-        payload = {"power": bool(state)}
+        payload = {"power": is_on}
         data_bytes = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             endpoint,

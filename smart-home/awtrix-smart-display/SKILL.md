@@ -38,7 +38,7 @@ Integration and control CLI for Awtrix 3 smart display clocks. Exposes a unified
        "kitchen": "awtrix-kitchen.local",
        "office": "awtrix-office.local"
      },
-     "sprites_dir": "/Users/njl/dev/src/ff-sprite-data",
+     "sprites_dir": "/path/to/external-sprites-directory",
      "default_text_color": "#00BCFF"
    }
    ```
@@ -70,4 +70,4 @@ awtrix stream status
 
 - **Logical Aliases:** Always refer to devices using the logical aliases defined in your configuration file (`kitchen`, `office`) instead of raw IP addresses.
 - **Background Animator Conflict:** The background animation streamer runs continuously. When sending notifications via `awtrix notify`, they will run in a custom scene named `notify` that overrides other apps temporarily. If you want a static notification to persist, delete the `edge_scene` custom app or stop the streamer using `awtrix stream stop`.
-- **Sprite Names:** Slicing looks up names case-insensitively inside `sprites.json` in the external sprites directory (e.g. `rydia_child`, `cecil`, `terra`).
+- **Sprite Names:** Sprite resolution looks up names case-insensitively inside `sprites.json` in the external sprites directory (e.g. `rydia_child`, `cecil`, `terra`).

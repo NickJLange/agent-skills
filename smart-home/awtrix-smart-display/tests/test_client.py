@@ -1,8 +1,9 @@
 import os
 import tempfile
 import json
+from unittest.mock import patch
 from PIL import Image
-from awtrix_display.client import resolve_sprite_path, process_gif_for_awtrix
+from awtrix_display.client import resolve_sprite_path, process_gif_for_awtrix, AwtrixClient
 
 def test_resolve_sprite_path():
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -32,11 +33,12 @@ def test_process_gif_for_awtrix():
     img1.putpixel((5, 5), (0, 0, 255, 255))
     img2.putpixel((5, 5), (0, 0, 255, 255))
     
-    with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as f:
-        img1.save(f, save_all=True, append_images=[img2], duration=100, loop=0)
-        temp_gif = f.name
-        
+    temp_gif = None
     try:
+        with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as f:
+            img1.save(f, save_all=True, append_images=[img2], duration=100, loop=0)
+            temp_gif = f.name
+        
         frames, durations = process_gif_for_awtrix(temp_gif)
         
         assert len(frames) == 2
@@ -45,7 +47,47 @@ def test_process_gif_for_awtrix():
         # Check active pixels in frames
         assert len(frames[0]) > 0
     finally:
-        try:
-            os.remove(temp_gif)
-        except Exception:
-            pass
+        if temp_gif:
+            try:
+                os.remove(temp_gif)
+            except Exception:
+                pass
+
+def test_awtrix_client_input_coercion():
+    client = AwtrixClient()
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        from unittest.mock import MagicMock
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+        
+        assert client.set_power("localhost", "off") is True
+        args, _ = mock_urlopen.call_args
+        req = args[0]
+        data = json.loads(req.data.decode("utf-8"))
+        assert data["power"] is False
+        
+        assert client.set_power("localhost", "on") is True
+        args, _ = mock_urlopen.call_args
+        req = args[0]
+        data = json.loads(req.data.decode("utf-8"))
+        assert data["power"] is True
+        
+        assert client.set_power("localhost", False) is True
+        args, _ = mock_urlopen.call_args
+        req = args[0]
+        data = json.loads(req.data.decode("utf-8"))
+        assert data["power"] is False
+
+def test_awtrix_client_url_encoding():
+    client = AwtrixClient()
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        from unittest.mock import MagicMock
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+        
+        assert client.send_payload("localhost", "my custom app", {"test": 123}) is True
+        args, _ = mock_urlopen.call_args
+        req = args[0]
+        assert "name=my%20custom%20app" in req.full_url
