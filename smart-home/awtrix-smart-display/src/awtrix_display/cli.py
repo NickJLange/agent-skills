@@ -86,18 +86,8 @@ def handle_stream(args, config):
 
         # Resolve script path
         script_path = os.environ.get("AWTRIX_ANIMATE_SCRIPT")
-        if not script_path:
-            lookup_paths = [
-                os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../../mkulanzi/client/awtrix_animate.py")),
-                os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../mkulanzi/client/awtrix_animate.py")),
-            ]
-            for p in lookup_paths:
-                if os.path.exists(p):
-                    script_path = p
-                    break
         if not script_path or not os.path.exists(script_path):
-            print("Error: Could not locate awtrix_animate.py streamer script.")
-            print("Please set AWTRIX_ANIMATE_SCRIPT env variable pointing to it.")
+            print("Error: Please set AWTRIX_ANIMATE_SCRIPT env variable pointing to a valid awtrix_animate.py script.")
             return 1
 
         # Resolve devices & sprites dir

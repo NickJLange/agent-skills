@@ -2,7 +2,7 @@
 name: awtrix-smart-display
 description: Submit custom notifications, animated Final Fantasy characters, static text, raw drawings, and power commands to physical Awtrix 3 smart displays. Also controls the continuous background animations.
 version: 1.0.0
-author: Nick Lange
+author: Hermes Agent 01
 license: Apache-2.0
 metadata:
   hermes:
