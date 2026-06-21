@@ -37,3 +37,24 @@ def test_render_not_found_matches_schema():
     schema = json.loads(SCHEMA_PATH.read_text())
     out = render(_wire_synth_for_real_layout(), heading="MissingNeedle", source_url="https://example/")
     jsonschema.validate(instance=out, schema=schema)
+
+
+def test_flatten_output_matches_schema():
+    """Reviewer-flagged P1: the --flatten shape must also validate against the
+    published schema. The schema accepts either day-grouped or flat output via
+    `oneOf` — this exercises the flat branch."""
+    schema = json.loads(SCHEMA_PATH.read_text())
+    base = render(_wire_synth_for_real_layout(), heading="Foo日志", source_url="https://example/")
+    # Replicate the CLI's flatten transformation (cli.py:_cmd_update_log).
+    flat = {
+        "schema_version": 1,
+        "source_url": base["source_url"],
+        "heading": base["heading"],
+        "heading_id": base["heading_id"],
+        "items": [
+            {**it, "day": d.get("heading"), "day_heading_id": d.get("heading_id")}
+            for d in base["days"]
+            for it in d.get("items", [])
+        ],
+    }
+    jsonschema.validate(instance=flat, schema=schema)

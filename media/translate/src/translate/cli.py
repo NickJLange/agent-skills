@@ -32,20 +32,32 @@ def _safe_cache_put(*args, **kwargs) -> None:
 
 
 def _parse_fields(spec: str | None) -> frozenset[str]:
+    """Parse the --field spec.
+
+    Two modes:
+    - **delta mode**: every comma-separated token starts with `+` or `-`. Apply
+      adds and drops to `DEFAULT_FIELDS`.
+    - **replace mode**: at least one bare (unprefixed) token. The whole list
+      replaces `DEFAULT_FIELDS` — but `+`/`-` prefixes are still stripped from
+      individual tokens so a mixed spec like `+extra,title` yields
+      `{"extra", "title"}` rather than `{"+extra", "title"}`.
+    """
     if not spec:
         return DEFAULT_FIELDS
-    keep = set(DEFAULT_FIELDS)
-    for tok in spec.split(","):
-        tok = tok.strip()
-        if not tok:
-            continue
-        if tok.startswith("+"):
-            keep.add(tok[1:])
-        elif tok.startswith("-"):
-            keep.discard(tok[1:])
-        else:
-            return frozenset(t.strip() for t in spec.split(",") if t.strip())
-    return frozenset(keep)
+    tokens = [t.strip() for t in spec.split(",") if t.strip()]
+    if not tokens:
+        return DEFAULT_FIELDS
+    all_deltas = all(t.startswith(("+", "-")) for t in tokens)
+    if all_deltas:
+        keep = set(DEFAULT_FIELDS)
+        for tok in tokens:
+            if tok.startswith("+"):
+                keep.add(tok[1:])
+            else:
+                keep.discard(tok[1:])
+        return frozenset(keep)
+    # Replace mode — strip any stray prefixes so `+extra,title` works intuitively.
+    return frozenset(t.lstrip("+-") for t in tokens if t.lstrip("+-"))
 
 
 def main(argv: list[str] | None = None) -> int:

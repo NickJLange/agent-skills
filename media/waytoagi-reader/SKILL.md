@@ -24,6 +24,8 @@ No authentication required — the wiki is publicly readable in guest mode. The 
 | "today's WaytoAGI updates", "近 7 日更新日志", "what's new on WaytoAGI" | `waytoagi update-log` |
 | "WaytoAGI 6/18", "WaytoAGI June 18" | `waytoagi update-log --date '6 月 18 日'` |
 | "flat list of recent WaytoAGI items" | `waytoagi update-log --flatten` |
+| "WaytoAGI history", "older WaytoAGI entries", "全部更新日志" | `waytoagi update-log --archive` |
+| "WaytoAGI on May 22, 2025" | `waytoagi update-log --archive --date '5 月 22 日'` |
 
 ## Setup
 
@@ -37,11 +39,22 @@ No `.env`, no cookies, no API key.
 
 ```bash
 waytoagi update-log                              # full 7-day section, grouped by day
-waytoagi update-log --date '6 月 18 日'           # one day
+waytoagi update-log --date '6 月 18 日'           # one day from the 7-day window
 waytoagi update-log --flatten                    # flat items[] for downstream pipes
+waytoagi update-log --archive                    # full historical archive, grouped by month/day
+waytoagi update-log --archive --date '5 月 22 日' # one historical day across all years
 waytoagi update-log --heading '近 7 日更新日志'   # override heading match (defensive)
+waytoagi update-log --fuzzy                      # substring heading match (fallback)
+waytoagi update-log --no-cache                   # bypass the 5-minute raw-HTML cache
+waytoagi update-log --refresh                    # bypass cache read, refresh stored entry
 waytoagi update-log --emit-raw-blocks            # debugging: dump the full block dict
 ```
+
+### Modes
+
+- **Default (no flags)**: parses the "🎏 近 7 日更新日志" section of the main wiki page. ~7 days, grouped by day heading.
+- **`--archive`**: follows the "历史更新" mention link in the main doc to the archive (auto-discovered, not hardcoded). Renders all months / all days; each day item gets a `month` field. 500+ days indexed across the year+ archive.
+- **`--flatten`**: collapses `days[]` into a single `items[]` list. Each item gains `day` and `day_heading_id` fields. Use this when piping into the sibling `translate` skill or any downstream consumer that wants a flat feed.
 
 Fallback if `waytoagi` is not on PATH: `python3 -m waytoagi_reader.cli update-log`.
 

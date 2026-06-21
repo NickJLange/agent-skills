@@ -28,3 +28,40 @@ def test_is_already_translated_detects_sibling():
     container = {"title": "T", "title_en": "T(en)"}
     assert is_already_translated(container, "title", "en") is True
     assert is_already_translated(container, "title", "ja") is False
+
+
+# --- _parse_fields ---
+
+
+def test_parse_fields_all_deltas_modifies_defaults():
+    from translate.cli import _parse_fields
+
+    result = _parse_fields("+flashline,-text")
+    assert "flashline" in result
+    assert "text" not in result
+    assert "title" in result  # defaults retained
+
+
+def test_parse_fields_all_bare_replaces_defaults():
+    from translate.cli import _parse_fields
+
+    result = _parse_fields("title,summary")
+    assert result == frozenset({"title", "summary"})
+
+
+def test_parse_fields_mixed_prefix_and_bare_strips_prefix():
+    """Reviewer-flagged bug: `+extra,title` previously yielded {`+extra`, `title`}."""
+    from translate.cli import _parse_fields
+
+    result = _parse_fields("+extra,title")
+    assert "+extra" not in result
+    assert "extra" in result
+    assert "title" in result
+
+
+def test_parse_fields_empty_or_whitespace_returns_defaults():
+    from translate.cli import _parse_fields, DEFAULT_FIELDS
+
+    assert _parse_fields(None) is DEFAULT_FIELDS
+    assert _parse_fields("") is DEFAULT_FIELDS
+    assert _parse_fields(" , , ") is DEFAULT_FIELDS
