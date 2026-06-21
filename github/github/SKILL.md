@@ -1,7 +1,7 @@
 ---
 name: github
 description: "Single authoritative skill for all GitHub interaction via `gh` CLI. NEVER use raw curl api.github.com — gh saves ~80% tokens vs curl (no auth headers, no JSON parsing, no URL construction). Always load this skill before any GitHub operation."
-version: 1.1.0
+version: 1.2.0
 author: Hermes Agent 01
 license: MIT
 metadata:
@@ -33,8 +33,11 @@ Always start by verifying `gh` is available:
 
 ```bash
 if ! command -v gh &>/dev/null; then
-  echo "gh not found — installing..."
-  curl -sL "https://github.com/cli/cli/releases/latest/download/gh_$(uname -m | sed 's/x86_64/linux_amd64/' | sed 's/aarch64/linux_arm64/').tar.gz" \
+  echo "gh not found — determining latest version..."
+  ARCH=$(uname -m | sed 's/x86_64/linux_amd64/' | sed 's/aarch64/linux_arm64/')
+  VERSION=$(curl -s https://api.github.com/repos/cli/cli/releases/latest | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+  echo "gh not found — installing $VERSION ..."
+  curl -sL "https://github.com/cli/cli/releases/download/$VERSION/gh_${VERSION#v}_$ARCH.tar.gz" \
     | tar xz -C /tmp/
   cp /tmp/gh_*/bin/gh /opt/data/.local/bin/
   chmod +x /opt/data/.local/bin/gh
@@ -105,7 +108,7 @@ This environment runs in a container. When rebuilt, check what survived:
 
 ```bash
 export GH_CONFIG_DIR="/opt/data/.config/gh" && export PATH="/opt/data/.local/bin:$PATH:$HOME/.local/bin" && \
-  { command -v gh &>/dev/null || (curl -sL "https://github.com/cli/cli/releases/latest/download/gh_$(uname -m | sed 's/x86_64/linux_amd64/' | sed 's/aarch64/linux_arm64/').tar.gz" | tar xz -C /tmp/ && cp /tmp/gh_*/bin/gh /opt/data/.local/bin/ && chmod +x /opt/data/.local/bin/gh && rm -rf /tmp/gh_*); } && \
+  { command -v gh &>/dev/null || (ARCH=$(uname -m | sed 's/x86_64/linux_amd64/' | sed 's/aarch64/linux_arm64/') && VERSION=$(curl -s https://api.github.com/repos/cli/cli/releases/latest | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])") && curl -sL "https://github.com/cli/cli/releases/download/$VERSION/gh_${VERSION#v}_$ARCH.tar.gz" | tar xz -C /tmp/ && cp /tmp/gh_*/bin/gh /opt/data/.local/bin/ && chmod +x /opt/data/.local/bin/gh && rm -rf /tmp/gh_*); } && \
   gh auth status &>/dev/null || (python3 -c "import re; open('/opt/data/.config/gh/hosts.yml','w').write('github.com:\n    user: 5L-hermes01\n    oauth_token: ' + re.search(r'https://[^:]+:([^@]+)@github\.com', open('/opt/data/home/.git-credentials').read()).group(1) + '\n    git_protocol: https\n')") && \
   echo "gh READY" && gh auth status -h github.com && gh repo view 5L-hermes01/agent-skills --json name,isFork
 ```
@@ -524,11 +527,25 @@ gh pr diff $PR --repo $REPO --name-only
 gh pr view $PR --repo $REPO --json title,body,additions,deletions,changedFiles,reviews,comments
 ```
 
-### Step 2: Check out locally
+### Step 2: Check out locally (small PRs) OR delegate (large PRs)
+
+For **small PRs** (< 10 files, < 300 lines), check out locally:
 
 ```bash
 gh pr checkout $PR --repo $REPO
 ```
+
+For **large PRs** (10+ files, 500+ lines), reading the diff inline wastes context. Instead, use parallel subagent delegation — see [large-pr-review-workflow.md](references/large-pr-review-workflow.md) for the full workflow:
+
+1. Download the diff to a temp file: `gh pr diff $PR --repo $REPO > /tmp/pr-$PR.diff`
+2. Split the review by module or skill — each subagent gets its own slice of the diff
+3. Launch subagents in parallel via `delegate_task` with `tasks=[...]`, each receiving the relevant diff slice
+4. Each subagent reports per the review checklist (Critical / Warnings / Suggestions / Looks Good)
+5. Synthesize results into a single structured review
+
+**Example** — for PR #50 (30 files, 2 skills), delegate to 2 subagents:
+- Subagent 1: waytoagi-reader (17 files) — focus on SSR parsing, Feishu encoding, cache, archive, test quality
+- Subagent 2: translate (12 files) — focus on pipe architecture, backend abstraction, walker, cache key, test gaps
 
 ### Step 3: Read the diff
 
@@ -565,7 +582,17 @@ gh api "repos/$REPO/pulls/$PR/comments" \
   -f side="RIGHT"
 ```
 
-### Step 7: Clean up
+### Step 7: Request AI review tools (if reviewed for someone else's PR)
+
+After posting your review, request additional review passes from configured AI tools:
+
+```bash
+gh pr comment $PR --repo $REPO --body "Can we get a review pass from cubic and CodeRabbit on this?"
+```
+
+Many tools trigger automatically on comment events. Check whether the PR body already contains a cubic.dev review button — if so, the comment is just a nudge.
+
+### Step 8: Clean up
 
 ```bash
 git checkout main
@@ -591,10 +618,10 @@ git branch -D pr-$PR 2>/dev/null
 Run this single command to verify everything is operational:
 
 ```bash
-source /opt/data/.config/github/env.sh 2>/dev/null; \
+set -o pipefail; source /opt/data/.config/github/env.sh 2>/dev/null; \
 echo "=== gh binary ===" && command -v gh && gh --version && \
 echo "=== auth ===" && gh auth status -h github.com && \
-echo "=== API ===" && gh api rate_limit --jq '.rate.remaining' | xargs echo "API calls remaining:" && \
+echo "=== API ===" && REMAINING=$(gh api rate_limit --jq '.rate.remaining') && echo "API calls remaining: $REMAINING" && \
 echo "=== repos ===" && gh repo view 5L-hermes01/agent-skills --json name,isFork,parent && \
 echo "=== PR access ===" && gh pr list --repo 5L-Labs/agent-skills --limit 3 --json number,title,state && \
 echo "ALL GREEN"
@@ -632,6 +659,7 @@ The `github` skill is the ONLY authorized path for GitHub operations. Here's how
 - **GH_CONFIG_DIR** must be set — gh defaults to `~/.config/gh/` which may not resolve to `/opt/data/.config/gh/` depending on `$HOME`.
 - **Inline comments** still need `gh api` (no native `gh pr review --inline` flag). But `gh api` is still more concise than raw curl — no auth header, shorter URL.
 - **gh auth login** validates token scopes strictly. If the token lacks `read:org`, write `hosts.yml` manually instead of running `gh auth login`.
+- **`gh pr edit` uses GraphQL** and fails if the token lacks `read:org` scope. The error message says "GraphQL: Your token has not been granted the required scopes..." Use `gh api repos/OWNER/REPO/pulls/NUMBER --method PATCH -f body="..."` (REST API) as the fallback — no `read:org` needed.
 - **gh merge** without `--squash`/`--rebase`/`--merge` will prompt interactively. Always specify the merge method.
 - **Labels**: `gh issue edit --add-label` only appends. There's no native remove+add in one command.
 - **Secrets**: gh doesn't natively support encryption (libsodium). Use `gh api` or the GitHub CLI extension `gh secret set`.
