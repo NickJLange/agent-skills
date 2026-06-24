@@ -17,7 +17,165 @@ while current and current != os.path.dirname(current):
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from vehicle_profiles import ACTIVE_SEARCH_PROFILE_KEYS, get_profile
+# Try to dynamically import vehicle_profiles.py from the project root if available
+try:
+    from vehicle_profiles import ACTIVE_SEARCH_PROFILE_KEYS, get_profile
+    USING_VEHICLE_PROFILES = True
+except ImportError:
+    USING_VEHICLE_PROFILES = False
+
+# Normalize TargetProfile representation for fallback/json configs
+class TargetProfile:
+    def __init__(self, key, year, make, model, trim, target_otd_price, sample_vin, must_haves, required_trim_keywords=(), requires_awd=False, requires_hybrid=False, notes=""):
+        self.key = key
+        self.year = year
+        self.make = make
+        self.model = model
+        self.trim = trim
+        self.target_otd_price = target_otd_price
+        self.sample_vin = sample_vin
+        self.must_haves = must_haves
+        self.required_trim_keywords = required_trim_keywords
+        self.requires_awd = requires_awd
+        self.requires_hybrid = requires_hybrid
+        self.notes = notes
+
+    @property
+    def vehicle_label(self) -> str:
+        return f"{self.year} {self.make} {self.model} {self.trim}"
+
+    @property
+    def target_otd_label(self) -> str:
+        if self.target_otd_price is None:
+            return "TBD"
+        return f"${self.target_otd_price:,.2f}"
+
+# Built-in default target profiles
+DEFAULT_PROFILES = {
+    "grand_highlander_hybrid_limited_awd": TargetProfile(
+        key="grand_highlander_hybrid_limited_awd",
+        year=2026,
+        make="Toyota",
+        model="Grand Highlander",
+        trim="Hybrid Limited AWD",
+        target_otd_price=58450.85,
+        sample_vin="5TDACAB53TS25G407",
+        must_haves=(
+            "Hybrid powertrain",
+            "AWD",
+            "Limited trim",
+            "Panoramic Moonroof",
+            "Panoramic View Monitor (360 Cam)",
+            "7-Passenger Seating (Captain's Chairs)",
+            "Available or inbound unit that is not already sold/reserved",
+        ),
+        required_trim_keywords=("LIMITED",),
+        requires_awd=True,
+        requires_hybrid=True,
+    ),
+    "grand_highlander_hybrid_nightshade_awd": TargetProfile(
+        key="grand_highlander_hybrid_nightshade_awd",
+        year=2026,
+        make="Toyota",
+        model="Grand Highlander",
+        trim="Hybrid Nightshade AWD",
+        target_otd_price=56109.95,
+        sample_vin="5TDACAB59TS26E172",
+        must_haves=(
+            "Hybrid powertrain",
+            "AWD",
+            "Nightshade trim",
+            "Panoramic Moonroof",
+            "Panoramic View Monitor (360 Cam)",
+            "7-Passenger Seating (Captain's Chairs)",
+            "Available or inbound unit that is not already sold/reserved",
+        ),
+        required_trim_keywords=("NIGHTSHADE",),
+        requires_awd=True,
+        requires_hybrid=True,
+    ),
+    "chrysler_pacifica_pinnacle_awd": TargetProfile(
+        key="chrysler_pacifica_pinnacle_awd",
+        year=2026,
+        make="Chrysler",
+        model="Pacifica",
+        trim="Pinnacle AWD",
+        target_otd_price=None,
+        sample_vin="2C4RC3PG8TR233685",
+        must_haves=(
+            "AWD",
+            "Pinnacle trim",
+            "Harman Kardon Premium Sound",
+            "Available or inbound unit that is not already sold/reserved",
+        ),
+        required_trim_keywords=("PINNACLE",),
+        requires_awd=True,
+        requires_hybrid=False,
+    ),
+    "lexus_tx_350_awd": TargetProfile(
+        key="lexus_tx_350_awd",
+        year=2026,
+        make="Lexus",
+        model="TX",
+        trim="350 AWD",
+        target_otd_price=None,
+        sample_vin="5TDAAAB50RS004172",
+        must_haves=(
+            "AWD",
+            "350 trim",
+            "Technology Package",
+            "Captain's Chairs",
+            "Mark Levinson Premium Sound",
+            "Available or inbound unit that is not already sold/reserved",
+        ),
+        required_trim_keywords=("350",),
+        requires_awd=True,
+        requires_hybrid=False,
+    ),
+}
+
+def load_profiles_from_config(project_root):
+    # 1. Try importing vehicle_profiles first
+    if USING_VEHICLE_PROFILES:
+        try:
+            profiles = {}
+            for key in ACTIVE_SEARCH_PROFILE_KEYS:
+                profiles[key] = get_profile(key)
+            return ACTIVE_SEARCH_PROFILE_KEYS, profiles
+        except Exception as e:
+            print(f"[-] Warning: Failed to load profiles from vehicle_profiles: {e}. Falling back...", file=sys.stderr)
+
+    # 2. Try loading data/tracked_trims.json
+    trims_path = os.path.join(project_root, "data", "tracked_trims.json")
+    if os.path.exists(trims_path):
+        try:
+            with open(trims_path, "r") as f:
+                data = json.load(f)
+            keys = []
+            profiles = {}
+            for item in data:
+                key = item.get("key") or f"{item['make']}_{item['model']}_{item['trim']}".lower().replace(" ", "_")
+                keys.append(key)
+                profiles[key] = TargetProfile(
+                    key=key,
+                    year=item.get("year", 2026),
+                    make=item["make"],
+                    model=item["model"],
+                    trim=item["trim"],
+                    target_otd_price=item.get("target_otd_price"),
+                    sample_vin=item.get("sample_vin", ""),
+                    must_haves=tuple(item.get("must_haves", [])),
+                    required_trim_keywords=tuple(item.get("required_trim_keywords", [item["trim"].split()[0]])),
+                    requires_awd=item.get("requires_awd", "awd" in item["trim"].lower() or "4wd" in item["trim"].lower()),
+                    requires_hybrid=item.get("requires_hybrid", "hybrid" in item["trim"].lower() or "hybrid" in item["model"].lower()),
+                    notes=item.get("notes", "")
+                )
+            return tuple(keys), profiles
+        except Exception as e:
+            print(f"[-] Warning: Failed to parse tracked_trims.json: {e}. Using default target profiles.", file=sys.stderr)
+
+    # 3. Fall back to default profiles
+    return tuple(DEFAULT_PROFILES.keys()), DEFAULT_PROFILES
 
 # Base coordinate for distance calculation (Yonkers, NY)
 YONKERS_LAT = 40.9312
@@ -258,7 +416,8 @@ def verify_car_options(car, profile, cache_dict):
                 if not matches:
                     print(f"[-] Option mismatch on VDP for Pacifica {vin}", file=sys.stderr)
             else:
-                matches = True  # Fallback to True to avoid missing deals if unreachable
+                print(f"[-] Warning: Failed to fetch options data for Pacifica {vin} (unreachable). Rejecting listing.", file=sys.stderr)
+                matches = False
                 
     elif profile.key in ["grand_highlander_hybrid_limited_awd", "grand_highlander_hybrid_nightshade_awd"]:
         vdp_text = fetch_vdp_content(vdp_url)
@@ -270,7 +429,8 @@ def verify_car_options(car, profile, cache_dict):
             if not matches:
                 print(f"[-] GH options missing on {vin}: Moonroof={has_moonroof}, 360Cam={has_360_cam}, 7Pass={is_7_pass}", file=sys.stderr)
         else:
-            matches = True
+            print(f"[-] Warning: Failed to scrape VDP URL for Grand Highlander {vin} (unreachable). Rejecting listing.", file=sys.stderr)
+            matches = False
             
     elif profile.key == "lexus_tx_350_awd":
         vdp_text = fetch_vdp_content(vdp_url)
@@ -282,7 +442,8 @@ def verify_car_options(car, profile, cache_dict):
             if not matches:
                 print(f"[-] Lexus TX options missing on {vin}: Tech={has_tech}, Captains={has_captains}, ML={has_levinson}", file=sys.stderr)
         else:
-            matches = True
+            print(f"[-] Warning: Failed to scrape VDP URL for Lexus TX {vin} (unreachable). Rejecting listing.", file=sys.stderr)
+            matches = False
             
     cache_dict[vin] = matches
     return matches
@@ -299,7 +460,7 @@ def main():
         print("[-] Warning: VISOR_API_KEY environment variable is not set. Visor API live search will be skipped.", file=sys.stderr)
         
     parser = argparse.ArgumentParser(description="Daily Car Tracker - Publishes new and cheapest car deals.")
-    parser.add_argument("--trims", type=str, help="Not used. Checked profiles loaded dynamically from vehicle_profiles.py.")
+    parser.add_argument("--trims", type=str, help="Not used. Monitored trims loaded dynamically from JSON config or profiles module.")
     args = parser.parse_args()
     
     # State tracking
@@ -311,21 +472,24 @@ def main():
     cache_path = os.path.join(project_root, "data", "verified_options.json")
     verified_options = load_verified_options(cache_path)
     
+    # Load dynamic configurations
+    active_profile_keys, target_profiles = load_profiles_from_config(project_root)
+    
     print("# Daily Car Market Bulletin (New Listings & Cheapest Deals)")
     print(f"*Report generated for Yonkers, NY coordinates. Target distance comparisons sorted by proximity.*")
     print(f"*Options packages verified dynamically using OEM window stickers and dealer site scrapers.*")
     
-    for profile_key in ACTIVE_SEARCH_PROFILE_KEYS:
-        profile = get_profile(profile_key)
+    for profile_key in active_profile_keys:
+        profile = target_profiles[profile_key]
         make = profile.make
         model = profile.model
         trim = profile.trim
         
         # Determine vin_prefix from the sample_vin in the profile
         if make.lower() in ["toyota", "lexus"]:
-            vin_prefix = profile.sample_vin[:5]
+            vin_prefix = profile.sample_vin[:5] if profile.sample_vin else None
         else:
-            vin_prefix = profile.sample_vin[:6]
+            vin_prefix = profile.sample_vin[:6] if profile.sample_vin else None
             
         print(f"\n## 🚙 {make} {model} ({trim})")
         print(f"**Target Config Must-Haves**: {'; '.join(profile.must_haves)}")
