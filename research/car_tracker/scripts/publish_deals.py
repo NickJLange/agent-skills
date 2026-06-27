@@ -233,9 +233,8 @@ def main():
         print("\n### 🆕 New Arrivals in the Last 24 Hours")
         if new_arrivals:
             new_arrivals.sort(key=lambda x: x.get("computed_distance", float('inf')))
-            print("```")
-            print(f"{'Dealership (State — Dist)':<35} | {'Price':<7} | {'Delta':<7} | {'VIN':<18}")
-            print("-" * 75)
+            print(f"| {'Dealership (State — Dist)':<35} | {'Price':<7} | {'Delta':<7} | {'VIN':<18} | {'Link':<12} |")
+            print(f"| {'-' * 35} | {'-' * 7} | {'-' * 7} | {'-' * 18} | {'-' * 12} |")
             for car in new_arrivals:
                 c_price = car.get("price")
                 c_dist = car.get("computed_distance", float('inf'))
@@ -244,17 +243,17 @@ def main():
                 c_dealer_lbl = f"{c_dealer[:22]} ({c_state} — {c_dist:.0f} mi)"
                 c_vin = car.get("vin", "")
                 delta = c_price - cheapest_price
-                print(f"{c_dealer_lbl:<35} | ${c_price:,.0f} | +${delta:,.0f} | {c_vin}")
-            print("```")
+                c_vdp = car.get("vdp_url") or car.get("vdpUrl") or "#"
+                link_str = f"[Dealer Site]({c_vdp})" if c_vdp != "#" else "N/A"
+                print(f"| {c_dealer_lbl:<35} | ${c_price:,.0f} | +${delta:,.0f} | {c_vin} | {link_str} |")
         else:
             print("*No new listings appeared on the market since last check.*")
             
         # Print Cheapest Overall Deals (sorted by price)
         print("\n### 🏆 Top 5 Cheapest Active Deals")
         top_cheapest = listings[:5]
-        print("```")
-        print(f"{'Dealership (State — Dist)':<35} | {'Price':<7} | {'Delta':<7} | {'VIN':<18}")
-        print("-" * 75)
+        print(f"| {'Dealership (State — Dist)':<35} | {'Price':<7} | {'Delta':<7} | {'VIN':<18} | {'Link':<12} |")
+        print(f"| {'-' * 35} | {'-' * 7} | {'-' * 7} | {'-' * 18} | {'-' * 12} |")
         for car in top_cheapest:
             c_price = car.get("price")
             c_dist = car.get("computed_distance", float('inf'))
@@ -263,8 +262,9 @@ def main():
             c_dealer_lbl = f"{c_dealer[:22]} ({c_state} — {c_dist:.0f} mi)"
             c_vin = car.get("vin", "")
             delta = c_price - cheapest_price
-            print(f"{c_dealer_lbl:<35} | ${c_price:,.0f} | +${delta:,.0f} | {c_vin}")
-        print("```")
+            c_vdp = car.get("vdp_url") or car.get("vdpUrl") or "#"
+            link_str = f"[Dealer Site]({c_vdp})" if c_vdp != "#" else "N/A"
+            print(f"| {c_dealer_lbl:<35} | ${c_price:,.0f} | +${delta:,.0f} | {c_vin} | {link_str} |")
         
     # Update global state of seen VINs
     save_seen_listings(new_seen_vins, state_path)
