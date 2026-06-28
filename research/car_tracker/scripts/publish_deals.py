@@ -58,7 +58,7 @@ def get_listings_for_trim(make, model, trim, vin_prefix, api_key, project_root):
     elif "pinnacle" in trim_lower or "pinn" in trim_lower:
         filter_words = ["pinn"]
     elif "350" in trim_lower:
-        filter_words = ["350"]
+        filter_words = ["350", "premium", "luxury", "base", "f sport", "f-sport"]
     else:
         trim_words = trim_lower.split()
         filter_words = [w for w in trim_words if w not in ["awd", "4wd", "hybrid", "max"]]
