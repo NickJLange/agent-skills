@@ -111,7 +111,11 @@ def get_listings_for_trim(target, api_key, project_root):
         if requires_awd:
             is_awd_flag = car.get("is_awd") or (car.get("drivetrain") or "").upper() in ("AWD", "4WD", "4X4", "ALL-WHEEL DRIVE")
             if not is_awd_flag:
+                vdp_url = car.get("vdp_url") or car.get("vdpUrl") or ""
+                listing_text = f"{model} {car_trim} {vdp_url}".upper()
                 is_awd_flag = any(token in listing_text for token in ("AWD", "4WD", "4X4"))
+            if not is_awd_flag and car_vin.startswith("5TDAA") and len(car_vin) > 5:
+                is_awd_flag = (car_vin[5] == "B")
             if not is_awd_flag:
                 continue
                 
@@ -169,7 +173,11 @@ def get_listings_for_trim(target, api_key, project_root):
                     if requires_awd:
                         is_awd_flag = car.get("is_awd") or (car.get("drivetrain") or "").upper() in ("AWD", "4WD", "4X4", "ALL-WHEEL DRIVE")
                         if not is_awd_flag:
+                            vdp_url = car.get("vdp_url") or car.get("vdpUrl") or ""
+                            listing_text = f"{model} {car_trim} {vdp_url}".upper()
                             is_awd_flag = any(token in listing_text for token in ("AWD", "4WD", "4X4"))
+                        if not is_awd_flag and car_vin.startswith("5TDAA") and len(car_vin) > 5:
+                            is_awd_flag = (car_vin[5] == "B")
                         if not is_awd_flag:
                             continue
                             
