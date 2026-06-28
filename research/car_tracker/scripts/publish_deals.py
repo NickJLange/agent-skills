@@ -109,7 +109,10 @@ def get_listings_for_trim(target, api_key, project_root):
                 
         # Match AWD
         if requires_awd:
-            if not any(token in listing_text for token in ("AWD", "4WD", "4X4")):
+            is_awd_flag = car.get("is_awd") or (car.get("drivetrain") or "").upper() in ("AWD", "4WD", "4X4", "ALL-WHEEL DRIVE")
+            if not is_awd_flag:
+                is_awd_flag = any(token in listing_text for token in ("AWD", "4WD", "4X4"))
+            if not is_awd_flag:
                 continue
                 
         # Match Hybrid
@@ -164,7 +167,10 @@ def get_listings_for_trim(target, api_key, project_root):
                             
                     # Match AWD
                     if requires_awd:
-                        if not any(token in listing_text for token in ("AWD", "4WD", "4X4")):
+                        is_awd_flag = car.get("is_awd") or (car.get("drivetrain") or "").upper() in ("AWD", "4WD", "4X4", "ALL-WHEEL DRIVE")
+                        if not is_awd_flag:
+                            is_awd_flag = any(token in listing_text for token in ("AWD", "4WD", "4X4"))
+                        if not is_awd_flag:
                             continue
                             
                     # Match Hybrid
