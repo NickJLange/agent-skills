@@ -6,11 +6,14 @@ import urllib.request
 import urllib.error
 import ssl
 
-def call_mcp_tool(url, password, tool_name, arguments):
-    # Disable SSL verification since some local servers use self-signed certificates
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+def call_mcp_tool(url, password, tool_name, arguments, insecure=False):
+    # Setup SSL Context based on --insecure CLI argument
+    if insecure:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    else:
+        ctx = ssl.create_default_context()
     
     headers = {
         "Content-Type": "application/json",
@@ -58,11 +61,23 @@ def call_mcp_tool(url, password, tool_name, arguments):
         if sid:
             headers["Mcp-Session-Id"] = sid
             
+        # Send notifications/initialized as required by MCP 2025-06-18 spec
+        init_notif = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {}
+        }
+        req_notif = urllib.request.Request(url, data=json.dumps(init_notif).encode(), headers=headers, method="POST")
+        with urllib.request.urlopen(req_notif, context=ctx, timeout=15) as r_notif:
+            r_notif.read()
+            
         req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers, method="POST")
         with urllib.request.urlopen(req, context=ctx, timeout=15) as r:
+            content_type = r.headers.get("Content-Type", "").lower()
             body = r.read().decode()
             
-            if "data:" in body:
+            # SSE framing cleanup if text/event-stream
+            if "text/event-stream" in content_type:
                 data_lines = [line[5:].strip() for line in body.splitlines() if line.startswith("data:")]
                 body = "\n".join(data_lines)
                 
@@ -83,6 +98,7 @@ def main():
     parser = argparse.ArgumentParser(description="Search emails in MsgVault via MCP.")
     parser.add_argument("--query", required=True, help="Search query")
     parser.add_argument("--limit", type=int, default=5, help="Max results")
+    parser.add_argument("--insecure", action="store_true", help="Skip TLS certificate verification (unsafe)")
     
     args = parser.parse_args()
     
@@ -93,15 +109,19 @@ def main():
         from dotenv import load_dotenv
         load_dotenv(env_path)
         
-    url = os.getenv("MSGVAULT_URL") or "https://lunarbeacon.newyork.nicklange.family:9443/mcp"
+    url = os.getenv("MSGVAULT_URL")
     password = os.getenv("MSGVAULT_PASSWORD")
     
+    if not url:
+        print("[-] Error: MSGVAULT_URL must be defined in environment or .env file.", file=sys.stderr)
+        sys.exit(1)
+        
     if not password:
         print("[-] Error: MSGVAULT_PASSWORD must be defined in environment or .env file.", file=sys.stderr)
         sys.exit(1)
         
-    print(f"[+] Searching MsgVault for query '{args.query}'...")
-    result = call_mcp_tool(url, password, "search_messages", {"query": args.query, "limit": args.limit})
+    print(f"[+] Searching MsgVault at {url}...")
+    result = call_mcp_tool(url, password, "search_messages", {"query": args.query, "limit": args.limit}, insecure=args.insecure)
     
     content = result.get("content", [])
     if content:
@@ -116,10 +136,12 @@ def main():
                 print(f"  Subject: {m.get('subject', '')}")
                 print(f"  Snippet: {m.get('snippet', '')}")
         except Exception as e:
-            print(f"[-] Failed to parse message JSON: {e}")
-            print(text_data)
+            print(f"[-] Failed to parse message JSON: {e}", file=sys.stderr)
+            print(text_data, file=sys.stderr)
+            sys.exit(1)
     else:
-        print("[-] No content returned from MsgVault.")
+        print("[-] No content returned from MsgVault.", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

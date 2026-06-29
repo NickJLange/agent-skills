@@ -46,12 +46,23 @@ def call_mcp_tool(url, auth, tool_name, arguments):
         if sid:
             headers["Mcp-Session-Id"] = sid
             
+        # Send notifications/initialized as required by MCP 2025-06-18 spec
+        init_notif = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {}
+        }
+        req_notif = urllib.request.Request(url, data=json.dumps(init_notif).encode(), headers=headers, method="POST")
+        with urllib.request.urlopen(req_notif, timeout=15) as r_notif:
+            r_notif.read()
+            
         req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=15) as r:
+            content_type = r.headers.get("Content-Type", "").lower()
             body = r.read().decode()
             
-            # SSE framing cleanup if present
-            if "data:" in body:
+            # SSE framing cleanup if text/event-stream
+            if "text/event-stream" in content_type:
                 data_lines = [line[5:].strip() for line in body.splitlines() if line.startswith("data:")]
                 body = "\n".join(data_lines)
                 

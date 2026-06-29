@@ -1,12 +1,12 @@
 ---
 name: superhuman_mcp
-description: Interacts with the Superhuman Mail MCP server to create, update, and manage email drafts, send emails, and schedule events.
+description: Interacts with the Superhuman Mail MCP server to compose, update, and manage email drafts.
 version: 1.0.0
 ---
 
 # Superhuman Mail MCP Skill
 
-This skill provides programmatic access to the Superhuman Mail MCP server, allowing you to compose, update, send, and manage email drafts or schedule calendar events.
+This skill provides programmatic access to the Superhuman Mail MCP server to compose, update, and manage email drafts.
 
 ## Configuration Requirements
 

@@ -1,12 +1,12 @@
 ---
 name: msgvault_mcp
-description: Interacts with the MsgVault MCP server to search emails, retrieve message details, and read inbound feeds.
+description: Interacts with the MsgVault MCP server to search archived inbound emails.
 version: 1.0.0
 ---
 
 # MsgVault MCP Skill
 
-This skill provides programmatic access to the MsgVault MCP server, allowing you to search archived inbound emails and retrieve detailed messages (e.g. from Mozmail).
+This skill provides programmatic access to the MsgVault MCP server to search archived inbound emails.
 
 ## Configuration Requirements
 
