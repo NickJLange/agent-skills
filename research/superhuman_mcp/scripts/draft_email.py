@@ -5,6 +5,33 @@ import argparse
 import urllib.request
 import urllib.error
 
+def read_jsonrpc_response(r, req_id):
+    content_type = r.headers.get("Content-Type", "").lower()
+    
+    if "text/event-stream" in content_type:
+        # Read SSE stream line-by-line to avoid hanging on persistent connections
+        for line_bytes in r:
+            line = line_bytes.decode("utf-8").strip()
+            if line.startswith("data:"):
+                data_content = line[5:].strip()
+                try:
+                    payload = json.loads(data_content)
+                    if payload.get("id") == req_id:
+                        return payload
+                except json.JSONDecodeError:
+                    pass
+    else:
+        # Standard JSON response
+        body = r.read().decode("utf-8")
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError as e:
+            print(f"[-] Failed to parse JSON response: {e}", file=sys.stderr)
+            sys.exit(1)
+            
+    print(f"[-] Error: JSON-RPC response with ID {req_id} not found in stream.", file=sys.stderr)
+    sys.exit(1)
+
 def call_mcp_tool(url, auth, tool_name, arguments):
     headers = {
         "Content-Type": "application/json",
@@ -41,14 +68,7 @@ def call_mcp_tool(url, auth, tool_name, arguments):
         req = urllib.request.Request(url, data=json.dumps(init_payload).encode(), headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=15) as r:
             sid = r.headers.get("Mcp-Session-Id")
-            init_content_type = r.headers.get("Content-Type", "").lower()
-            init_body = r.read().decode()
-            
-            if "text/event-stream" in init_content_type:
-                data_lines = [line[5:].strip() for line in init_body.splitlines() if line.startswith("data:")]
-                init_body = "\n".join(data_lines)
-                
-            init_res = json.loads(init_body)
+            init_res = read_jsonrpc_response(r, 0)
             if "error" in init_res:
                 print(f"[-] MCP Initialization Error: {init_res['error']}", file=sys.stderr)
                 sys.exit(1)
@@ -69,15 +89,7 @@ def call_mcp_tool(url, auth, tool_name, arguments):
             
         req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=15) as r:
-            content_type = r.headers.get("Content-Type", "").lower()
-            body = r.read().decode()
-            
-            # SSE framing cleanup if text/event-stream
-            if "text/event-stream" in content_type:
-                data_lines = [line[5:].strip() for line in body.splitlines() if line.startswith("data:")]
-                body = "\n".join(data_lines)
-                
-            res = json.loads(body)
+            res = read_jsonrpc_response(r, 1)
             if "error" in res:
                 print(f"[-] MCP Error: {res['error']}", file=sys.stderr)
                 sys.exit(1)
