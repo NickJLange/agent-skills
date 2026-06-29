@@ -31,6 +31,9 @@ def decode_vin(vin):
     except requests.exceptions.RequestException as e:
         print(f"[-] Connection error: {e}", file=sys.stderr)
         sys.exit(1)
+    except (json.JSONDecodeError, KeyError, TypeError, IndexError) as e:
+        print(f"[-] Error parsing response from NHTSA API: {e}", file=sys.stderr)
+        sys.exit(1)
 
 def main():
     if len(sys.argv) < 2:
