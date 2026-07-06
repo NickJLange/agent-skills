@@ -21,11 +21,210 @@ def get_distance(lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c * 1.18
 
+def extract_color(car):
+    """Best-effort extraction of paint color from the listing VDP URL and details."""
+    text = (car.get("vdp_url") or car.get("vdpUrl") or "").lower()
+    trim = (car.get("trim") or "").lower()
+    
+    color_map = {
+        "wind chill": "Wind Chill Pearl",
+        "wind-chill": "Wind Chill Pearl",
+        "cloudburst": "Cloudburst Gray",
+        "caviar": "Caviar Black",
+        "eminent white": "Eminent White Pearl",
+        "eminent-white": "Eminent White Pearl",
+        "nightshade": "Midnight Black (Nightshade)",
+        "blueprint": "Blueprint Blue",
+        "supersonic red": "Supersonic Red",
+        "supersonic-red": "Supersonic Red",
+        "velvet red": "Velvet Red Pearl",
+        "velvet-red": "Velvet Red Pearl",
+        "fathom blue": "Fathom Blue Pearl",
+        "fathom-blue": "Fathom Blue Pearl",
+        "bright white": "Bright White Clearcoat",
+        "bright-white": "Bright White Clearcoat",
+        "granite crystal": "Granite Crystal Metallic",
+        "granite-crystal": "Granite Crystal Metallic",
+        "storm cloud": "Storm Cloud Gray",
+        "storm-cloud": "Storm Cloud Gray",
+        "silver sterling": "Silver Sterling Metallic",
+        "silver-sterling": "Silver Sterling Metallic",
+        "celestial silver": "Celestial Silver Metallic",
+        "celestial-silver": "Celestial Silver Metallic",
+        "midnight black": "Midnight Black Metallic",
+        "midnight-black": "Midnight Black Metallic",
+        "supersonic": "Supersonic Red",
+        "supersonicred": "Supersonic Red",
+        "white": "White",
+        "black": "Black",
+        "gray": "Gray",
+        "grey": "Gray",
+        "silver": "Silver",
+        "blue": "Blue",
+        "red": "Red",
+        "bronze": "Bronze",
+    }
+    
+    for key, val in color_map.items():
+        if key in text or key in trim:
+            return val
+            
+    return "TBD"
+
+# Global cache for listing details
+details_cache = {}
+
+def seed_details_cache(project_root):
+    # Try seeding from national discount analysis first to avoid hitting API rate limits
+    paths = [
+        os.path.join(project_root, "national_discount_analysis.json"),
+        os.path.join(project_root, "data", "national_discount_analysis.json"),
+        "national_discount_analysis.json"
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    for key, cars in data.items():
+                        for car in cars:
+                            vin = car.get("vin")
+                            if vin:
+                                details_cache[vin] = {
+                                    "vehicle": {
+                                        "build": {
+                                            "exterior_color": car.get("exteriorColor") or car.get("exterior_color"),
+                                            "combined_msrp": car.get("msrp") or car.get("reference_msrp")
+                                        }
+                                    }
+                                }
+                                if car.get("id"):
+                                    details_cache[car.get("id")] = details_cache[vin]
+                print(f"[+] Loaded/Seeded details cache from {path}", file=sys.stderr)
+                break
+            except Exception as e:
+                print(f"[-] Warning: Failed to seed details cache from {path}: {e}", file=sys.stderr)
+
+def get_color_and_options(car, api_key):
+    listing_id = car.get("id")
+    vin = car.get("vin")
+    
+    # Try ID or VIN lookup in cache
+    details = None
+    if listing_id and listing_id in details_cache:
+        details = details_cache[listing_id]
+    elif vin and vin in details_cache:
+        details = details_cache[vin]
+        
+    if details is None and listing_id and api_key:
+        url = f"https://api.visor.vin/v1/listings/{listing_id}"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code == 200:
+                details = r.json().get("data", {})
+                details_cache[listing_id] = details
+                if vin:
+                    details_cache[vin] = details
+                time.sleep(0.5)  # small rate-limit spacing
+            else:
+                details = {}
+        except Exception:
+            details = {}
+            
+    if details:
+        vehicle = details.get("vehicle", {})
+        build = vehicle.get("build", {})
+        color = build.get("exterior_color")
+        if color:
+            return color
+            
+    return extract_color(car)
+
+def get_msrp_info(car, api_key):
+    listing_id = car.get("id")
+    vin = car.get("vin")
+    
+    # Ensure color/options fetching has populated cache
+    get_color_and_options(car, api_key)
+    
+    details = None
+    if listing_id and listing_id in details_cache:
+        details = details_cache[listing_id]
+    elif vin and vin in details_cache:
+        details = details_cache[vin]
+        
+    if details:
+        # Check vehicle build combined_msrp
+        vehicle = details.get("vehicle", {})
+        build = vehicle.get("build", {})
+        msrp = build.get("combined_msrp") or build.get("base_msrp")
+        if msrp:
+            return msrp
+        # Check pricing line_items
+        pricing = details.get("pricing", {})
+        if pricing:
+            for item in pricing.get("line_items", []):
+                if item.get("role") == "pricing_anchor" or item.get("subtype") == "msrp":
+                    return item.get("amount_usd")
+    return None
+
+def car_matches_profile(car, make, model, trim, vin_prefix, req_keywords, requires_awd, requires_hybrid):
+    car_trim = (car.get("trim") or "").lower()
+    car_vin = (car.get("vin") or "").upper()
+    price = car.get("price")
+    car_type = (car.get("inventory_type", car.get("inventoryType", "used")) or "used").lower()
+    
+    if price is None or not car_vin:
+        return False
+        
+    # Powertrain matching
+    if vin_prefix and len(car_vin) > 9:
+        if make.lower() == "toyota" or make.lower() == "lexus":
+            if len(vin_prefix) > 4 and car_vin[3:5] != vin_prefix[3:5]:
+                return False
+        elif make.lower() == "chrysler":
+            if len(vin_prefix) > 5 and car_vin[5] != vin_prefix[5]:
+                return False
+                
+    # Condition matching (strictly new)
+    if car_type != "new":
+        return False
+        
+    # Match trim keywords
+    listing_text = f"{model} {car_trim}".upper()
+    if req_keywords:
+        if not any(k.upper() in listing_text for k in req_keywords):
+            return False
+            
+    # Match AWD
+    if requires_awd:
+        is_awd_flag = car.get("is_awd") or (car.get("drivetrain") or "").upper() in ("AWD", "4WD", "4X4", "ALL-WHEEL DRIVE")
+        if not is_awd_flag:
+            vdp_url = car.get("vdp_url") or car.get("vdpUrl") or ""
+            awd_text = f"{model} {car_trim} {vdp_url}".upper()
+            is_awd_flag = any(token in awd_text for token in ("AWD", "4WD", "4X4"))
+        if not is_awd_flag and len(car_vin) > 6:
+            if car_vin.startswith(("5TDAA", "5TDAC", "5TDAD")):
+                is_awd_flag = (car_vin[6] == "B")
+        if not is_awd_flag:
+            return False
+            
+    # Match Hybrid
+    if requires_hybrid:
+        hybrid_text = f"{model} {car_trim}".upper()
+        is_hybrid_flag = "HYBRID" in hybrid_text or car_vin.startswith(("5TDAC", "5TDAD"))
+        if not is_hybrid_flag:
+            return False
+            
+    return True
+
 def get_listings_for_trim(target, api_key, project_root):
     make = target["make"]
     model = target["model"]
     trim = target["trim"]
-    vin_prefix = target.get("vin_prefix")
+    vin_prefix = target.get("vin_prefix") or target.get("sample_vin")
     
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     listings = []
@@ -66,7 +265,7 @@ def get_listings_for_trim(target, api_key, project_root):
         elif "pinnacle" in trim_lower or "pinn" in trim_lower:
             req_keywords = ["pinn"]
         elif "350" in trim_lower:
-            req_keywords = ["350", "premium", "luxury", "base", "f sport", "f-sport"]
+            req_keywords = ["350"]
         else:
             trim_words = trim_lower.split()
             req_keywords = [w for w in trim_words if w not in ["awd", "4wd", "hybrid", "max"]]
@@ -80,55 +279,12 @@ def get_listings_for_trim(target, api_key, project_root):
         requires_hybrid = "hybrid" in trim.lower()
         
     for car in listings:
-        car_trim = (car.get("trim") or "").lower()
-        car_vin = (car.get("vin") or "").upper()
-        price = car.get("price")
-        car_type = (car.get("inventory_type", car.get("inventoryType", "used")) or "used").lower()
-        
-        if price is None or not car_vin:
-            continue
-            
-        # Powertrain matching
-        if vin_prefix and len(car_vin) > 9:
-            if make.lower() == "toyota" or make.lower() == "lexus":
-                if len(vin_prefix) > 4 and car_vin[3:5] != vin_prefix[3:5]:
-                    continue
-            elif make.lower() == "chrysler":
-                if len(vin_prefix) > 5 and car_vin[5] != vin_prefix[5]:
-                    continue
-                    
-        # Condition matching (strictly brand-new)
-        if car_type != "new":
-            continue
-            
-        # Match trim keywords
-        listing_text = f"{model} {car_trim}".upper()
-        if req_keywords:
-            if not any(k.upper() in listing_text for k in req_keywords):
-                continue
-                
-        # Match AWD
-        if requires_awd:
-            is_awd_flag = car.get("is_awd") or (car.get("drivetrain") or "").upper() in ("AWD", "4WD", "4X4", "ALL-WHEEL DRIVE")
-            if not is_awd_flag:
-                vdp_url = car.get("vdp_url") or car.get("vdpUrl") or ""
-                listing_text = f"{model} {car_trim} {vdp_url}".upper()
-                is_awd_flag = any(token in listing_text for token in ("AWD", "4WD", "4X4"))
-            if not is_awd_flag and car_vin.startswith("5TDAA") and len(car_vin) > 5:
-                is_awd_flag = (car_vin[5] == "B")
-            if not is_awd_flag:
-                continue
-                
-        # Match Hybrid
-        if requires_hybrid:
-            if "HYBRID" not in listing_text and not car_vin.startswith(("5TDAC", "5TDAD")):
-                continue
-                
-        lat = car.get("latitude")
-        lon = car.get("longitude")
-        dist = get_distance(lat, lon)
-        car["computed_distance"] = dist
-        matching.append(car)
+        if car_matches_profile(car, make, model, trim, vin_prefix, req_keywords, requires_awd, requires_hybrid):
+            lat = car.get("latitude")
+            lon = car.get("longitude")
+            dist = get_distance(lat, lon)
+            car["computed_distance"] = dist
+            matching.append(car)
             
     # Also load from saved file if API has fewer matches
     saved_path = os.path.join(project_root, "data", "comprehensive_search_results.json")
@@ -142,58 +298,18 @@ def get_listings_for_trim(target, api_key, project_root):
                 for car in saved_data[key]:
                     car_make = car.get("make", "")
                     car_model = car.get("model", "")
-                    car_trim = (car.get("trim") or "").lower()
-                    car_vin = (car.get("vin") or "").upper()
-                    car_type = (car.get("inventory_type", car.get("inventoryType", "used")) or "used").lower()
-                    price = car.get("price")
                     
-                    if price is None or car_make.lower() != make.lower() or model.lower() not in car_model.lower():
+                    if car_make.lower() != make.lower() or model.lower() not in car_model.lower():
                         continue
                         
-                    # Powertrain matching
-                    if vin_prefix and len(car_vin) > 9:
-                        if make.lower() == "toyota" or make.lower() == "lexus":
-                            if len(vin_prefix) > 4 and car_vin[3:5] != vin_prefix[3:5]:
-                                continue
-                        elif make.lower() == "chrysler":
-                            if len(vin_prefix) > 5 and car_vin[5] != vin_prefix[5]:
-                                continue
-                                
-                    # Condition matching
-                    if car_type != "new":
-                        continue
-                        
-                    # Match trim keywords
-                    listing_text = f"{model} {car_trim}".upper()
-                    if req_keywords:
-                        if not any(k.upper() in listing_text for k in req_keywords):
-                            continue
-                            
-                    # Match AWD
-                    if requires_awd:
-                        is_awd_flag = car.get("is_awd") or (car.get("drivetrain") or "").upper() in ("AWD", "4WD", "4X4", "ALL-WHEEL DRIVE")
-                        if not is_awd_flag:
-                            vdp_url = car.get("vdp_url") or car.get("vdpUrl") or ""
-                            listing_text = f"{model} {car_trim} {vdp_url}".upper()
-                            is_awd_flag = any(token in listing_text for token in ("AWD", "4WD", "4X4"))
-                        if not is_awd_flag and car_vin.startswith("5TDAA") and len(car_vin) > 5:
-                            is_awd_flag = (car_vin[5] == "B")
-                        if not is_awd_flag:
-                            continue
-                            
-                    # Match Hybrid
-                    if requires_hybrid:
-                        if "HYBRID" not in listing_text and not car_vin.startswith(("5TDAC", "5TDAD")):
-                            continue
-                            
-                    lat = car.get("latitude")
-                    lon = car.get("longitude")
-                    dist = get_distance(lat, lon)
-                    car["computed_distance"] = dist
-                    
-                    # Prevent duplicate VINs
-                    if not any(x.get("vin") == car.get("vin") for x in matching):
-                        matching.append(car)
+                    if car_matches_profile(car, make, model, trim, vin_prefix, req_keywords, requires_awd, requires_hybrid):
+                        lat = car.get("latitude")
+                        lon = car.get("longitude")
+                        dist = get_distance(lat, lon)
+                        car["computed_distance"] = dist
+                        # Prevent duplicate VINs
+                        if not any(x.get("vin") == car.get("vin") for x in matching):
+                            matching.append(car)
         except Exception as e:
             print(f"[-] Warning: Failed to load comprehensive_search_results.json: {e}", file=sys.stderr)
 
@@ -233,6 +349,9 @@ def main():
         load_dotenv(dotenv_path)
     else:
         load_dotenv()
+        
+    # Seed our details cache from national discount analysis JSON
+    seed_details_cache(project_root)
         
     api_key = os.getenv("VISOR.VIN_API_KEY") or os.getenv("VISOR_API_KEY")
     if not api_key:
@@ -316,8 +435,8 @@ def main():
         print("\n### 🆕 New Arrivals in the Last 24 Hours")
         if new_arrivals:
             new_arrivals.sort(key=lambda x: x.get("computed_distance", float('inf')))
-            print(f"| {'Dealership (State — Dist)':<35} | {'Price':<7} | {'Delta':<7} | {'VIN':<18} | {'Link':<12} |")
-            print(f"| {'-' * 35} | {'-' * 7} | {'-' * 7} | {'-' * 18} | {'-' * 12} |")
+            print(f"| {'Dealership (State — Dist)':<35} | {'Price (% off MSRP)':<20} | {'Delta':<7} | {'Color':<18} | {'VIN':<18} | {'Visor Link':<12} | {'Dealer Site':<12} |")
+            print(f"| {'-' * 35} | {'-' * 20} | {'-' * 7} | {'-' * 18} | {'-' * 18} | {'-' * 12} | {'-' * 12} |")
             for car in new_arrivals:
                 c_price = car.get("price")
                 c_dist = car.get("computed_distance", float('inf'))
@@ -327,16 +446,28 @@ def main():
                 c_vin = car.get("vin", "")
                 delta = c_price - cheapest_price
                 c_vdp = car.get("vdp_url") or car.get("vdpUrl") or "#"
+                c_color = get_color_and_options(car, api_key)
+                c_msrp = get_msrp_info(car, api_key)
+                if c_msrp and c_msrp > 0:
+                    discount = c_msrp - c_price
+                    pct_off = (discount / c_msrp) * 100
+                    if pct_off >= 0:
+                        price_lbl = f"${c_price:,.0f} (-{pct_off:.1f}%)"
+                    else:
+                        price_lbl = f"${c_price:,.0f} (+{abs(pct_off):.1f}%)"
+                else:
+                    price_lbl = f"${c_price:,.0f}"
+                visor_str = f"[Visor](https://visor.vin/search/listings/{c_vin})" if c_vin else "N/A"
                 link_str = f"[Dealer Site]({c_vdp})" if c_vdp != "#" else "N/A"
-                print(f"| {c_dealer_lbl:<35} | ${c_price:,.0f} | +${delta:,.0f} | {c_vin} | {link_str} |")
+                print(f"| {c_dealer_lbl:<35} | {price_lbl:<20} | +${delta:,.0f} | {c_color:<18} | {c_vin} | {visor_str} | {link_str} |")
         else:
             print("*No new listings appeared on the market since last check.*")
             
         # Print Cheapest Overall Deals (sorted by price)
         print("\n### 🏆 Top 5 Cheapest Active Deals")
         top_cheapest = listings[:5]
-        print(f"| {'Dealership (State — Dist)':<35} | {'Price':<7} | {'Delta':<7} | {'VIN':<18} | {'Link':<12} |")
-        print(f"| {'-' * 35} | {'-' * 7} | {'-' * 7} | {'-' * 18} | {'-' * 12} |")
+        print(f"| {'Dealership (State — Dist)':<35} | {'Price (% off MSRP)':<20} | {'Delta':<7} | {'Color':<18} | {'VIN':<18} | {'Visor Link':<12} | {'Dealer Site':<12} |")
+        print(f"| {'-' * 35} | {'-' * 20} | {'-' * 7} | {'-' * 18} | {'-' * 18} | {'-' * 12} | {'-' * 12} |")
         for car in top_cheapest:
             c_price = car.get("price")
             c_dist = car.get("computed_distance", float('inf'))
@@ -346,8 +477,20 @@ def main():
             c_vin = car.get("vin", "")
             delta = c_price - cheapest_price
             c_vdp = car.get("vdp_url") or car.get("vdpUrl") or "#"
+            c_color = get_color_and_options(car, api_key)
+            c_msrp = get_msrp_info(car, api_key)
+            if c_msrp and c_msrp > 0:
+                discount = c_msrp - c_price
+                pct_off = (discount / c_msrp) * 100
+                if pct_off >= 0:
+                    price_lbl = f"${c_price:,.0f} (-{pct_off:.1f}%)"
+                else:
+                    price_lbl = f"${c_price:,.0f} (+{abs(pct_off):.1f}%)"
+            else:
+                price_lbl = f"${c_price:,.0f}"
+            visor_str = f"[Visor](https://visor.vin/search/listings/{c_vin})" if c_vin else "N/A"
             link_str = f"[Dealer Site]({c_vdp})" if c_vdp != "#" else "N/A"
-            print(f"| {c_dealer_lbl:<35} | ${c_price:,.0f} | +${delta:,.0f} | {c_vin} | {link_str} |")
+            print(f"| {c_dealer_lbl:<35} | {price_lbl:<20} | +${delta:,.0f} | {c_color:<18} | {c_vin} | {visor_str} | {link_str} |")
         
     # Update global state of seen VINs
     save_seen_listings(new_seen_vins, state_path)
