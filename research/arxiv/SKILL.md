@@ -1,9 +1,10 @@
 ---
 name: arxiv
 description: "Search arXiv papers by keyword, author, category, or ID."
-version: 1.0.0
-author: Hermes Agent
+version: 1.1.0
+author: Hermes Agent 01
 license: MIT
+platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [Research, Arxiv, Papers, Academic, Science, API]
@@ -240,32 +241,13 @@ curl -s "https://api.semanticscholar.org/graph/v1/author/search?query=Yann+LeCun
 
 ---
 
+## Custom Digest Workflows
+
+For Ad-Hoc Paper List and Daily Digest with Dedup workflows, see
+[`references/digest-workflows.md`](references/digest-workflows.md).
+These are deployment-specific and not part of the upstream skill.
+
 ## Complete Research Workflow
-
-1. **Discover**: `python scripts/search_arxiv.py "your topic" --sort date --max 10`
-2. **Assess impact**: `curl -s "https://api.semanticscholar.org/graph/v1/paper/arXiv:ID?fields=citationCount,influentialCitationCount"`
-3. **Read abstract**: `web_extract(urls=["https://arxiv.org/abs/ID"])`
-4. **Read full paper**: `web_extract(urls=["https://arxiv.org/pdf/ID"])`
-5. **Find related work**: `curl -s "https://api.semanticscholar.org/graph/v1/paper/arXiv:ID/references?fields=title,citationCount&limit=20"`
-6. **Get recommendations**: POST to Semantic Scholar recommendations endpoint
-7. **Track authors**: `curl -s "https://api.semanticscholar.org/graph/v1/author/search?query=NAME"`
-
-
-### Troubleshooting API Rate Limits
-If the arXiv API returns "Rate exceeded", use a `sleep` interval (at least 3-5 seconds between requests) or include a user-agent string to improve compliance with access policies:
-```bash
-curl -s -A "Mozilla/5.0" "https://export.arxiv.org/api/query?..."
-```
-If programmatic access fails, fall back to scraping the recent listings page directly:
-```bash
-curl -s -A "Mozilla/5.0" "https://arxiv.org/list/cs.CL/recent"
-```
-
-
-| API | Rate | Auth |
-|-----|------|------|
-| arXiv | ~1 req / 3 seconds | None needed |
-| Semantic Scholar | 1 req / second | None (100/sec with API key) |
 
 ## Notes
 
