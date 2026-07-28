@@ -9,7 +9,7 @@ from typing import Optional
 
 from ._next_data import extract_next_data, page_props
 from .cache import Cache, TTL_ARTICLE
-from .client import NotFoundError, WSJClient
+from .client import NotFoundError, SessionExpiredError, WSJClient
 
 
 def get_article(
@@ -27,11 +27,14 @@ def get_article(
     client = client or WSJClient()
     html = client.get_html(url)
     payload = extract_next_data(html, url=url)
-    cache.set_json("GET", url, payload)
+    _raise_if_snippet(payload, url=url)
+    if not no_cache:
+        cache.set_json("GET", url, payload)
     return _normalize(payload, url=url)
 
 
 def _normalize(payload: dict, *, url: str) -> dict:
+    _raise_if_snippet(payload, url=url)
     art = (page_props(payload).get("articleData") or {})
     if not art:
         raise NotFoundError(f"No articleData in __NEXT_DATA__ for {url}")
@@ -60,6 +63,21 @@ def _normalize(payload: dict, *, url: str) -> dict:
         "article_type": article_type_name,
         "body": art.get("flattenedBody") or art.get("articleBody"),
     }
+
+
+def _raise_if_snippet(payload: dict, *, url: str) -> None:
+    pp = page_props(payload)
+    if not pp.get("isSnippetView"):
+        return
+    if pp.get("encryptedDataHash") or pp.get("encryptedDocumentKey"):
+        raise SessionExpiredError(
+            f"WSJ returned only a snippet for {url}. The remaining article body "
+            "is encrypted, so the current cookie did not unlock full content."
+        )
+    raise SessionExpiredError(
+        f"WSJ returned only a snippet for {url}. Refresh WSJ_COOKIE from a "
+        "logged-in subscribed browser session."
+    )
 
 
 def _name_of(value) -> Optional[str]:

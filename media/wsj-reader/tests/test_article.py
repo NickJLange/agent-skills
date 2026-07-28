@@ -1,6 +1,8 @@
 import responses
+import pytest
 
 from wsj_reader.article import get_article
+from wsj_reader.client import SessionExpiredError
 
 
 @responses.activate
@@ -16,3 +18,13 @@ def test_article_extracts_articledata(fake_env, fx):
     assert out["flashline"] == "Finance"
     assert out["summary"] == "Synthetic short summary."
     assert isinstance(out["body"], list)
+
+
+@responses.activate
+def test_article_rejects_snippet_payload(fake_env, fx):
+    url = "https://www.wsj.com/finance/snippet-article"
+    responses.add(responses.GET, url, body=fx("article_snippet_page.html"),
+                  status=200, content_type="text/html")
+
+    with pytest.raises(SessionExpiredError, match="returned only a snippet"):
+        get_article(url, no_cache=True)
